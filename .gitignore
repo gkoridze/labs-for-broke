@@ -1,7 +1,6 @@
 aws_creds.json
 .terraform/*
 .terraform.lock.hcl
-ignitions/*
 .DS_Store
 **/.DS_Store
 terraform.tfstate
