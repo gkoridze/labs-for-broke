@@ -1,0 +1,12 @@
+%{ for key, value in jsondecode(base64decode(peers)) ~}
+[Interface]
+PrivateKey = 
+Address = 10.70.88.${sum([100, key])}/24
+
+
+[Peer]
+PublicKey = ${publickey}
+AllowedIPs = 10.10.16.0/24, 10.70.88.0/24
+Endpoint = ${endpoint}:443
+%{ endfor ~}
+

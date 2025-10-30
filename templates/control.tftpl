@@ -1,0 +1,106 @@
+variant: fcos
+version: 1.6.0
+storage:
+  files:
+    - path: /etc/zincati/config.d/90-disable-auto-updates.toml
+      contents:
+        inline: |
+          [updates]
+          enabled = false
+
+
+    - path: /etc/hostname
+      mode: 0644
+      contents:
+        inline: |
+          ${name}
+
+    - path: /etc/yum.repos.d/kubernetes.repo
+      mode: 0644
+      contents:
+        inline: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://pkgs.k8s.io/core:/stable:/v1.33/rpm/
+          enabled=1
+          gpgcheck=1
+          gpgkey=https://pkgs.k8s.io/core:/stable:/v1.33/rpm/repodata/repomd.xml.key
+
+    - path: /etc/hosts
+      mode: 0644
+      overwrite: true
+      contents:
+        inline: |
+          127.0.0.1 localhost
+          10.10.16.10 api.kubelius
+          10.10.16.11 control-01
+          10.10.16.12 control-02
+          10.10.16.13 control-03
+
+    - path: /etc/kube-cluster.config
+      mode: 0644
+      contents:
+        inline: |
+          apiVersion: kubeadm.k8s.io/v1beta4
+          kind: ClusterConfiguration
+          kubernetesVersion: 1.33.0
+          controlPlaneEndpoint: "api.kubelius:6443"
+          controllerManager:
+            extraArgs:
+              - name: flex-volume-plugin-dir
+                value: "/etc/kubernetes/kubelet-plugins/volume/exec"
+          networking:
+            serviceSubnet: "10.96.0.0/16"
+            podSubnet: "10.50.0.0/16"
+          ---
+          apiVersion: kubeadm.k8s.io/v1beta4
+          kind: InitConfiguration
+
+    - path: /etc/sysctl.d/kube.conf
+      mode: 0644
+      contents:
+        inline: |
+          net.ipv4.ip_forward=1
+systemd:
+  units:
+    - name: rpm-ostree-install-kube.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Layer with kubelet and crio
+        Wants=network-online.target
+        After=network-online.target
+        # We run before `zincati.service` to avoid conflicting rpm-ostree
+        # transactions.
+        Before=zincati.service
+        ConditionPathExists=!/var/lib/%N.stamp
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/usr/bin/rpm-ostree install -y --allow-inactive kubelet kubeadm cri-o
+        ExecStart=/bin/touch /var/lib/%N.stamp
+        ExecStart=/bin/systemctl --no-block reboot
+
+        [Install]
+        WantedBy=multi-user.target
+
+    - name: kube-autoinit.service
+      enabled: true
+      contents: |
+        [Unit]
+        Description=Layer with kubelet and crio
+        Wants=network-online.target
+        After=network-online.target
+        Before=zincati.service
+        ConditionPathExists=/usr/bin/kubelet 
+        ConditionPathExists=!/var/lib/kubeinited
+
+        [Service]
+        Type=oneshot
+        RemainAfterExit=yes
+        ExecStart=/usr/bin/systemctl enable --now crio.service kubelet.service
+        ExecStart=/bin/touch /var/lib/kubeinited
+
+        [Install]
+        WantedBy=multi-user.target

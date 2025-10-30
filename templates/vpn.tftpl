@@ -2,6 +2,12 @@ variant: fcos
 version: 1.6.0
 storage:
   files:
+    - path: /etc/zincati/config.d/90-disable-auto-updates.toml
+      contents:
+        inline: |
+          [updates]
+          enabled = false
+
     - path: /etc/sysctl.d/90-ipv4-ip-forward.conf
       mode: 0644
       contents:
@@ -13,16 +19,19 @@ storage:
       contents:
         inline: |
           [Interface]
-          PrivateKey = 
+          PrivateKey = ${private_key}
           Address = 10.70.88.0/24
           ListenPort = 443
 
           PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o enX0 -j MASQUERADE 
           PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o enX0 -j MASQUERADE 
           
+          %{ for key, value in jsondecode(base64decode(peers)) ~}
+
           [Peer]
-          PublicKey = 
-          AllowedIPs = 10.70.88.10
+          PublicKey = ${value}
+          AllowedIPs = 10.70.88.${sum([100, key])}
+          %{ endfor ~}
 
 systemd:
   units:
