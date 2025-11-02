@@ -37,30 +37,513 @@ storage:
           10.10.16.12 control-02
           10.10.16.13 control-03
 
-    - path: /etc/kube-cluster.config
-      mode: 0644
-      contents:
-        inline: |
-          apiVersion: kubeadm.k8s.io/v1beta4
-          kind: ClusterConfiguration
-          kubernetesVersion: 1.33.0
-          controlPlaneEndpoint: "api.kubelius:6443"
-          controllerManager:
-            extraArgs:
-              - name: flex-volume-plugin-dir
-                value: "/etc/kubernetes/kubelet-plugins/volume/exec"
-          networking:
-            serviceSubnet: "10.96.0.0/16"
-            podSubnet: "10.50.0.0/16"
-          ---
-          apiVersion: kubeadm.k8s.io/v1beta4
-          kind: InitConfiguration
-
     - path: /etc/sysctl.d/kube.conf
       mode: 0644
       contents:
         inline: |
           net.ipv4.ip_forward=1
+
+
+    - path: /etc/systemd/system/kubelet.service
+      mode: 0644
+      overwrite: true
+      contents:
+        inline: |
+          [Unit]
+          Wants=network-online.target
+          After=network-online.target
+          [Service]
+          Environment="KUBELET_KUBECONFIG_ARGS=--kubeconfig=/etc/kubernetes/kubelet.conf"
+          Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
+          ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS
+          Restart=always
+          StartLimitInterval=0
+          RestartSec=10
+          [Install]
+          WantedBy=multi-user.target
+
+
+    - path: /var/lib/kubelet/config.yaml
+      mode: 0644
+      overwrite: true
+      contents:
+        inline: |
+          apiVersion: kubelet.config.k8s.io/v1beta1
+          authentication:
+            anonymous:
+              enabled: false
+            webhook:
+              cacheTTL: 0s
+              enabled: true
+            x509:
+              clientCAFile: /etc/kubernetes/pki/ca.crt
+          authorization:
+            mode: Webhook
+            webhook:
+              cacheAuthorizedTTL: 0s
+              cacheUnauthorizedTTL: 0s
+          cgroupDriver: systemd
+          clusterDNS:
+          - 10.96.0.10
+          clusterDomain: cluster.local
+          containerRuntimeEndpoint: "unix:///var/run/crio/crio.sock"
+          cpuManagerReconcilePeriod: 0s
+          crashLoopBackOff: {}
+          evictionPressureTransitionPeriod: 0s
+          fileCheckFrequency: 0s
+          healthzBindAddress: 127.0.0.1
+          healthzPort: 10248
+          httpCheckFrequency: 0s
+          imageMaximumGCAge: 0s
+          imageMinimumGCAge: 0s
+          kind: KubeletConfiguration
+          logging:
+            flushFrequency: 0
+            options:
+              json:
+                infoBufferSize: "0"
+              text:
+                infoBufferSize: "0"
+            verbosity: 0
+          memorySwap: {}
+          nodeStatusReportFrequency: 0s
+          nodeStatusUpdateFrequency: 0s
+          resolvConf: /run/systemd/resolve/resolv.conf
+          rotateCertificates: true
+          runtimeRequestTimeout: 0s
+          shutdownGracePeriod: 0s
+          shutdownGracePeriodCriticalPods: 0s
+          staticPodPath: /etc/kubernetes/manifests
+          streamingConnectionIdleTimeout: 0s
+          syncFrequency: 0s
+          volumeStatsAggPeriod: 0s
+
+
+    - path: /etc/kubernetes/manifests/etcd.yaml
+      mode: 0644
+      contents:
+        inline: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            annotations:
+              kubeadm.kubernetes.io/etcd.advertise-client-urls: https://${ip}:2379
+            creationTimestamp: null
+            labels:
+              component: etcd
+              tier: control-plane
+            name: etcd
+            namespace: kubelius-etcd
+          spec:
+            containers:
+            - command:
+              - etcd
+              - --advertise-client-urls=https://${ip}:2379
+              - --cert-file=/etc/kubernetes/pki/etcd/server.crt
+              - --client-cert-auth=true
+              - --data-dir=/var/lib/etcd
+              - --experimental-initial-corrupt-check=true
+              - --experimental-watch-progress-notify-interval=5s
+              - --initial-advertise-peer-urls=https://${ip}:2380
+              - --initial-cluster=control-01=https://10.10.16.11:2380,control-02=https://10.10.16.12:2380,control-03=https://10.10.16.13:2380
+              - --key-file=/etc/kubernetes/pki/etcd/server.key
+              - --listen-client-urls=https://127.0.0.1:2379,https://${ip}:2379
+              - --listen-metrics-urls=http://127.0.0.1:2381
+              - --listen-peer-urls=https://${ip}:2380
+              - --name=${name}
+              - --peer-cert-file=/etc/kubernetes/pki/etcd/peer.crt
+              - --peer-client-cert-auth=true
+              - --peer-key-file=/etc/kubernetes/pki/etcd/peer.key
+              - --peer-trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+              - --snapshot-count=10000
+              - --trusted-ca-file=/etc/kubernetes/pki/etcd/ca.crt
+              image: ${images.etcd-image}
+              imagePullPolicy: IfNotPresent
+              livenessProbe:
+                failureThreshold: 8
+                httpGet:
+                  host: 127.0.0.1
+                  path: /livez
+                  port: 2381
+                  scheme: HTTP
+                initialDelaySeconds: 10
+                periodSeconds: 10
+                timeoutSeconds: 15
+              name: etcd
+              readinessProbe:
+                failureThreshold: 3
+                httpGet:
+                  host: 127.0.0.1
+                  path: /readyz
+                  port: 2381
+                  scheme: HTTP
+                periodSeconds: 1
+                timeoutSeconds: 15
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 100Mi
+              startupProbe:
+                failureThreshold: 24
+                httpGet:
+                  host: 127.0.0.1
+                  path: /readyz
+                  port: 2381
+                  scheme: HTTP
+                initialDelaySeconds: 10
+                periodSeconds: 10
+                timeoutSeconds: 15
+              volumeMounts:
+              - mountPath: /var/lib/etcd
+                name: etcd-data
+              - mountPath: /etc/kubernetes/pki/etcd
+                name: etcd-certs
+            hostNetwork: true
+            priority: 2000001000
+            priorityClassName: system-node-critical
+            securityContext:
+              seccompProfile:
+                type: RuntimeDefault
+            volumes:
+            - hostPath:
+                path: /etc/kubernetes/pki/etcd
+                type: DirectoryOrCreate
+              name: etcd-certs
+            - hostPath:
+                path: /var/lib/etcd
+                type: DirectoryOrCreate
+              name: etcd-data
+
+    - path: /etc/kubernetes/manifests/kube-apiserver.yaml
+      mode: 0644
+      contents:
+        inline: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            annotations:
+              kubeadm.kubernetes.io/kube-apiserver.advertise-address.endpoint: ${ip}:6443
+            creationTimestamp: null
+            labels:
+              component: kube-apiserver
+              tier: control-plane
+            name: kube-apiserver
+            namespace: kube-system
+          spec:
+            containers:
+            - command:
+              - kube-apiserver
+              - --advertise-address=${ip}
+              - --allow-privileged=true
+              - --authorization-mode=Node,RBAC
+              - --client-ca-file=/etc/kubernetes/pki/ca.crt
+              - --enable-admission-plugins=NodeRestriction
+              - --enable-bootstrap-token-auth=true
+              - --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt
+              - --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt
+              - --etcd-keyfile=/etc/kubernetes/pki/apiserver-etcd-client.key
+              - --etcd-servers=https://127.0.0.1:2379
+              - --kubelet-client-certificate=/etc/kubernetes/pki/apiserver-kubelet-client.crt
+              - --kubelet-client-key=/etc/kubernetes/pki/apiserver-kubelet-client.key
+              - --kubelet-preferred-address-types=Hostname,InternalDNS,InternalIP
+              - --secure-port=6443
+              - --service-account-issuer=https://kubernetes.default.svc.cluster.local
+              - --service-account-key-file=/etc/kubernetes/pki/sa.pub
+              - --service-account-signing-key-file=/etc/kubernetes/pki/sa.key
+              - --service-cluster-ip-range=10.96.0.0/16
+              - --tls-cert-file=/etc/kubernetes/pki/apiserver.crt
+              - --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+              image: ${images.api-image}
+              imagePullPolicy: IfNotPresent
+              livenessProbe:
+                failureThreshold: 8
+                httpGet:
+                  host: ${ip}
+                  path: /livez
+                  port: 6443
+                  scheme: HTTPS
+                initialDelaySeconds: 10
+                periodSeconds: 10
+                timeoutSeconds: 15
+              name: kube-apiserver
+              readinessProbe:
+                failureThreshold: 3
+                httpGet:
+                  host: ${ip}
+                  path: /readyz
+                  port: 6443
+                  scheme: HTTPS
+                periodSeconds: 1
+                timeoutSeconds: 15
+              resources:
+                requests:
+                  cpu: 250m
+              startupProbe:
+                failureThreshold: 24
+                httpGet:
+                  host: ${ip}
+                  path: /livez
+                  port: 6443
+                  scheme: HTTPS
+                initialDelaySeconds: 10
+                periodSeconds: 10
+                timeoutSeconds: 15
+              volumeMounts:
+              - mountPath: /etc/ssl/certs
+                name: ca-certs
+                readOnly: true
+              - mountPath: /etc/pki/ca-trust
+                name: etc-pki-ca-trust
+                readOnly: true
+              - mountPath: /etc/pki/tls/certs
+                name: etc-pki-tls-certs
+                readOnly: true
+              - mountPath: /etc/kubernetes/pki
+                name: k8s-certs
+                readOnly: true
+            hostNetwork: true
+            priority: 2000001000
+            priorityClassName: system-node-critical
+            securityContext:
+              seccompProfile:
+                type: RuntimeDefault
+            volumes:
+            - hostPath:
+                path: /etc/ssl/certs
+                type: DirectoryOrCreate
+              name: ca-certs
+            - hostPath:
+                path: /etc/pki/ca-trust
+                type: DirectoryOrCreate
+              name: etc-pki-ca-trust
+            - hostPath:
+                path: /etc/pki/tls/certs
+                type: DirectoryOrCreate
+              name: etc-pki-tls-certs
+            - hostPath:
+                path: /etc/kubernetes/pki
+                type: DirectoryOrCreate
+              name: k8s-certs
+        
+    - path: /etc/kubernetes/manifests/kube-scheduler.yaml
+      mode: 0644
+      contents:
+        inline: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            creationTimestamp: null
+            labels:
+              component: kube-scheduler
+              tier: control-plane
+            name: kube-scheduler
+            namespace: kube-system
+          spec:
+            containers:
+            - command:
+              - kube-scheduler
+              - --authentication-kubeconfig=/etc/kubernetes/scheduler.conf
+              - --authorization-kubeconfig=/etc/kubernetes/scheduler.conf
+              - --bind-address=127.0.0.1
+              - --kubeconfig=/etc/kubernetes/scheduler.conf
+              - --leader-elect=true
+              image: ${images.scheduler-image}
+              imagePullPolicy: IfNotPresent
+              livenessProbe:
+                failureThreshold: 8
+                httpGet:
+                  host: 127.0.0.1
+                  path: /livez
+                  port: 10259
+                  scheme: HTTPS
+                initialDelaySeconds: 10
+                periodSeconds: 10
+                timeoutSeconds: 15
+              name: kube-scheduler
+              readinessProbe:
+                failureThreshold: 3
+                httpGet:
+                  host: 127.0.0.1
+                  path: /readyz
+                  port: 10259
+                  scheme: HTTPS
+                periodSeconds: 1
+                timeoutSeconds: 15
+              resources:
+                requests:
+                  cpu: 100m
+              startupProbe:
+                failureThreshold: 24
+                httpGet:
+                  host: 127.0.0.1
+                  path: /livez
+                  port: 10259
+                  scheme: HTTPS
+                initialDelaySeconds: 10
+                periodSeconds: 10
+                timeoutSeconds: 15
+              volumeMounts:
+              - mountPath: /etc/kubernetes/scheduler.conf
+                name: kubeconfig
+                readOnly: true
+            hostNetwork: true
+            priority: 2000001000
+            priorityClassName: system-node-critical
+            securityContext:
+              seccompProfile:
+                type: RuntimeDefault
+            volumes:
+            - hostPath:
+                path: /etc/kubernetes/scheduler.conf
+                type: FileOrCreate
+              name: kubeconfig
+
+
+    - path: /etc/kubernetes/manifests/kube-controller-manager.yaml
+      mode: 0644
+      contents:
+        inline: |
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            creationTimestamp: null
+            labels:
+              component: kube-controller-manager
+              tier: control-plane
+            name: kube-controller-manager
+            namespace: kube-system
+          spec:
+            containers:
+            - command:
+              - kube-controller-manager
+              - --allocate-node-cidrs=true
+              - --authentication-kubeconfig=/etc/kubernetes/controller-manager.conf
+              - --authorization-kubeconfig=/etc/kubernetes/controller-manager.conf
+              - --bind-address=127.0.0.1
+              - --client-ca-file=/etc/kubernetes/pki/ca.crt
+              - --cluster-cidr=10.50.0.0/16
+              - --cluster-name=kubernetes
+              - --cluster-signing-cert-file=/etc/kubernetes/pki/ca.crt
+              - --cluster-signing-key-file=/etc/kubernetes/pki/ca.key
+              - --controllers=*,bootstrapsigner,tokencleaner
+              - --flex-volume-plugin-dir=/etc/kubernetes/kubelet-plugins/volume/exec
+              - --kubeconfig=/etc/kubernetes/controller-manager.conf
+              - --leader-elect=true
+              - --root-ca-file=/etc/kubernetes/pki/ca.crt
+              - --service-account-private-key-file=/etc/kubernetes/pki/sa.key
+              - --service-cluster-ip-range=10.96.0.0/16
+              - --use-service-account-credentials=true
+              image: ${images.controller-image}
+              imagePullPolicy: IfNotPresent
+              livenessProbe:
+                failureThreshold: 8
+                httpGet:
+                  host: 127.0.0.1
+                  path: /healthz
+                  port: 10257
+                  scheme: HTTPS
+                initialDelaySeconds: 10
+                periodSeconds: 10
+                timeoutSeconds: 15
+              name: kube-controller-manager
+              resources:
+                requests:
+                  cpu: 200m
+              startupProbe:
+                failureThreshold: 24
+                httpGet:
+                  host: 127.0.0.1
+                  path: /healthz
+                  port: 10257
+                  scheme: HTTPS
+                initialDelaySeconds: 10
+                periodSeconds: 10
+                timeoutSeconds: 15
+              volumeMounts:
+              - mountPath: /etc/ssl/certs
+                name: ca-certs
+                readOnly: true
+              - mountPath: /etc/pki/ca-trust
+                name: etc-pki-ca-trust
+                readOnly: true
+              - mountPath: /etc/pki/tls/certs
+                name: etc-pki-tls-certs
+                readOnly: true
+              - mountPath: /etc/kubernetes/kubelet-plugins/volume/exec
+                name: flexvolume-dir
+              - mountPath: /etc/kubernetes/pki
+                name: k8s-certs
+                readOnly: true
+              - mountPath: /etc/kubernetes/controller-manager.conf
+                name: kubeconfig
+                readOnly: true
+            hostNetwork: true
+            priority: 2000001000
+            priorityClassName: system-node-critical
+            securityContext:
+              seccompProfile:
+                type: RuntimeDefault
+            volumes:
+            - hostPath:
+                path: /etc/ssl/certs
+                type: DirectoryOrCreate
+              name: ca-certs
+            - hostPath:
+                path: /etc/pki/ca-trust
+                type: DirectoryOrCreate
+              name: etc-pki-ca-trust
+            - hostPath:
+                path: /etc/pki/tls/certs
+                type: DirectoryOrCreate
+              name: etc-pki-tls-certs
+            - hostPath:
+                path: /etc/kubernetes/kubelet-plugins/volume/exec
+                type: DirectoryOrCreate
+              name: flexvolume-dir
+            - hostPath:
+                path: /etc/kubernetes/pki
+                type: DirectoryOrCreate
+              name: k8s-certs
+            - hostPath:
+                path: /etc/kubernetes/controller-manager.conf
+                type: FileOrCreate
+              name: kubeconfig
+
+%{ for key, value in client-certs ~}
+    - path: /etc/kubernetes/${key}.conf
+      mode: 0644
+      contents: 
+        inline: |
+          apiVersion: v1
+          clusters:
+          - cluster:
+              certificate-authority-data: ${ca64}
+              server: https://${ip}:6443
+            name: kubernetes
+          contexts:
+          - context:
+              cluster: kubernetes
+              user: ${value.user}
+            name: ${value.user}@kubernetes
+          current-context: ${value.user}@kubernetes
+          kind: Config
+          preferences: {}
+          users:
+          - name: ${value.user}
+            user:
+              client-certificate-data: ${value.cert}
+              client-key-data: ${value.key}
+          
+%{ endfor ~}
+
+%{ for path, value in certs ~}
+    - path: ${path}
+      mode: 0644
+      contents: 
+        inline: |
+          ${indent(10, base64decode(value))}
+%{ endfor ~}
+
 systemd:
   units:
     - name: rpm-ostree-install-kube.service
@@ -78,7 +561,7 @@ systemd:
         [Service]
         Type=oneshot
         RemainAfterExit=yes
-        ExecStart=/usr/bin/rpm-ostree install -y --allow-inactive kubelet kubeadm cri-o
+        ExecStart=/usr/bin/rpm-ostree install -y --allow-inactive kubelet cri-o
         ExecStart=/bin/touch /var/lib/%N.stamp
         ExecStart=/bin/systemctl --no-block reboot
 

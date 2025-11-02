@@ -1,0 +1,8 @@
+variant: fcos
+version: 1.6.0
+ignition:
+  config:
+    replace:
+      source: s3://${bucket}/${key}.ign
+      verification:
+        hash: ${checksum}

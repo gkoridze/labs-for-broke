@@ -7,7 +7,7 @@ resource "aws_network_interface" "gw_int" {
 resource "aws_instance" "gw_instance" {
   ami = local.ami
   instance_type = "t2.micro"
-  key_name = local.ssh_key
+  key_name = local.aws_creds.ssh_key_pair
   user_data_base64 = data.external.ignition_vpn.result.base64
   network_interface {
     network_interface_id = aws_network_interface.gw_int.id
@@ -91,4 +91,8 @@ output "vpn_client" {
     publickey = local.aws_creds.wg_public
     endpoint = aws_eip.nat_public_ip.public_ip
   }))
+}
+
+output "vpn_address" {
+  value = aws_eip.nat_public_ip.public_ip
 }

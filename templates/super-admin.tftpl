@@ -1,0 +1,19 @@
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority-data: ${ca}
+    server: https://api.kubelius:6443
+  name: kubernetes
+contexts:
+- context:
+    cluster: kubernetes
+    user: kubernetes-super-admin
+  name: kubernetes-super-admin@kubernetes
+current-context: kubernetes-super-admin@kubernetes
+kind: Config
+preferences: {}
+users:
+- name: kubernetes-super-admin
+  user:
+    client-certificate-data: ${crt}
+    client-key-data: ${key}

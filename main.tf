@@ -3,7 +3,6 @@ data "local_file" "aws_creds" {
 }
 
 locals {
-  ssh_key = "GK-MacP"
   ami = "ami-0c3ad5b862967b4f1"
   aws_creds = jsondecode(data.local_file.aws_creds.content)
 }
