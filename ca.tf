@@ -5,14 +5,14 @@ resource "tls_private_key" "root-ca" {
 
 
 resource "tls_self_signed_cert" "root-ca" {
-   private_key_pem = tls_private_key.root-ca.private_key_pem
+  private_key_pem = tls_private_key.root-ca.private_key_pem
 
-   is_ca_certificate = true
+  is_ca_certificate = true
 
-   subject {
-     common_name  = "root-ca"
-   }
-    
+  subject {
+    common_name = "root-ca"
+  }
+
   validity_period_hours = 43830 #5 Years.
 
   allowed_uses = [
@@ -26,12 +26,12 @@ resource "tls_private_key" "etcd-ca" {
   algorithm = "RSA"
   rsa_bits  = 4096
 }
-  
+
 resource "tls_cert_request" "etcd-ca" {
   private_key_pem = tls_private_key.etcd-ca.private_key_pem
 
   subject {
-    common_name  = "etcd-ca"
+    common_name = "etcd-ca"
   }
 }
 
@@ -57,12 +57,12 @@ resource "tls_private_key" "kubernetes-ca" {
   algorithm = "RSA"
   rsa_bits  = 4096
 }
-  
+
 resource "tls_cert_request" "kubernetes-ca" {
   private_key_pem = tls_private_key.kubernetes-ca.private_key_pem
 
   subject {
-    common_name  = "kubernetes-ca"
+    common_name = "kubernetes-ca"
   }
 }
 

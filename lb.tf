@@ -30,24 +30,24 @@ resource "aws_vpc_security_group_egress_rule" "kube_lb_allow_outbound" {
   ip_protocol       = "-1"
 }
 
-resource "aws_lb" "kube" { 
+resource "aws_lb" "kube" {
   name               = "kube"
   load_balancer_type = "network"
-  internal = true
-  security_groups    = [ aws_security_group.kube_lb.id ]
-  subnet_mapping { 
-    subnet_id = aws_subnet.instance_subnet.id
-    private_ipv4_address = "10.10.16.10" 
+  internal           = true
+  security_groups    = [aws_security_group.kube_lb.id]
+  subnet_mapping {
+    subnet_id            = aws_subnet.instance_subnet.id
+    private_ipv4_address = "10.10.16.10"
   }
 
 }
 
 resource "aws_lb_target_group" "kube-control" {
-  name        = "kube-control"
-  port        = 6443
-  protocol    = "TCP"
-  target_type = "ip"
-  vpc_id      = aws_vpc.lab.id
+  name            = "kube-control"
+  port            = 6443
+  protocol        = "TCP"
+  target_type     = "ip"
+  vpc_id          = aws_vpc.lab.id
   ip_address_type = "ipv4"
   health_check {
     port     = 6443
@@ -57,18 +57,18 @@ resource "aws_lb_target_group" "kube-control" {
 
 resource "aws_lb_listener" "kube_api" {
   load_balancer_arn = aws_lb.kube.arn
-  port = 6443
-  protocol = "TCP"
+  port              = 6443
+  protocol          = "TCP"
   default_action {
-     type             = "forward"
-     target_group_arn = aws_lb_target_group.kube-control.arn
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.kube-control.arn
   }
 }
 
 resource "aws_lb_target_group_attachment" "kube-controlers" {
-  for_each = aws_network_interface.control_int
+  for_each         = aws_network_interface.control_int
   target_group_arn = aws_lb_target_group.kube-control.arn
-  target_id =  each.value.private_ip
-  port = 6443
+  target_id        = each.value.private_ip
+  port             = 6443
 }
 

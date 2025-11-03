@@ -1,5 +1,5 @@
 variable "control-instances" {
-  type = map
+  type = map(any)
   default = {
     control-01 = { ip = "10.10.16.11" },
     control-02 = { ip = "10.10.16.12" },
@@ -8,11 +8,11 @@ variable "control-instances" {
 }
 
 variable "static-pods" {
-  type = map
+  type = map(any)
   default = {
-    etcd-image = "registry.k8s.io/etcd:3.5.21-0",
-    api-image = "registry.k8s.io/kube-apiserver:v1.33.0",
-    scheduler-image = "registry.k8s.io/kube-scheduler:v1.33.0",
+    etcd-image       = "registry.k8s.io/etcd:3.5.21-0",
+    api-image        = "registry.k8s.io/kube-apiserver:v1.33.0",
+    scheduler-image  = "registry.k8s.io/kube-scheduler:v1.33.0",
     controller-image = "registry.k8s.io/kube-controller-manager:v1.33.0"
   }
 }

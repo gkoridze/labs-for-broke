@@ -1,23 +1,23 @@
 resource "aws_network_interface" "gw_int" {
-  subnet_id = aws_subnet.gw_subnet.id
-  private_ips = ["10.10.31.10"]
+  subnet_id         = aws_subnet.gw_subnet.id
+  private_ips       = ["10.10.31.10"]
   source_dest_check = false
-  security_groups = [ aws_security_group.gw_sec.id ]
-} 
+  security_groups   = [aws_security_group.gw_sec.id]
+}
 resource "aws_instance" "gw_instance" {
-  ami = local.ami
-  instance_type = "t2.micro"
-  key_name = local.aws_creds.ssh_key_pair
+  ami              = local.ami
+  instance_type    = "t2.micro"
+  key_name         = local.aws_creds.ssh_key_pair
   user_data_base64 = data.external.ignition_vpn.result.base64
   network_interface {
     network_interface_id = aws_network_interface.gw_int.id
-    device_index = 0
+    device_index         = 0
   }
 }
 
 resource "aws_eip" "nat_public_ip" {
   instance = aws_instance.gw_instance.id
-  domain = "vpc"
+  domain   = "vpc"
 }
 
 resource "aws_internet_gateway" "internet_gw" {
@@ -77,9 +77,9 @@ resource "aws_vpc_security_group_egress_rule" "gw_allow_outbound" {
 data "external" "ignition_vpn" {
   program = ["sh", "scripts/butane.sh"]
   query = {
-    config64 = base64encode(templatefile("templates/vpn.tftpl", { 
+    config64 = base64encode(templatefile("templates/vpn.tftpl", {
       private_key = local.aws_creds.wg_private
-      peers = base64encode(jsonencode(local.aws_creds.wg_peers))
+      peers       = base64encode(jsonencode(local.aws_creds.wg_peers))
     }))
   }
 }
@@ -87,9 +87,9 @@ data "external" "ignition_vpn" {
 
 output "vpn_client" {
   value = base64encode(templatefile("templates/vpn-client.tftpl", {
-    peers = base64encode(jsonencode(local.aws_creds.wg_peers))
+    peers     = base64encode(jsonencode(local.aws_creds.wg_peers))
     publickey = local.aws_creds.wg_public
-    endpoint = aws_eip.nat_public_ip.public_ip
+    endpoint  = aws_eip.nat_public_ip.public_ip
   }))
 }
 
